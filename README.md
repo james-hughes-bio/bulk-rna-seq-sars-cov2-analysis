@@ -47,6 +47,15 @@ https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418
 ### GSEA Enrichment Curve
 ![GSEA Curve](results/gsea_enrichment.png)
 
+## Processed Data
+
+Processed results from the analysis are available in the `data/` directory:
+
+- Top differentially expressed genes (`top_100_DEGs.csv`)
+- Full list of significant DEGs
+- GSEA enrichment results
+- Sample metadata
+
 ## Key Findings
 SARS-CoV-2 infection induces a coordinated transcriptional response characterised by:
 - Immune system activation
