@@ -9,7 +9,6 @@ output:
 ```{r include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 set.seed(42)
-# setwd("C:/Users/james/OneDrive/Desktop/Additional Assignment")
 ```
 
 # Introduction
