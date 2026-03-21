@@ -1,7 +1,5 @@
 # RNA-seq Analysis of SARS-CoV-2 Infection
 
-# RNA-seq Analysis of SARS-CoV-2 Infection
-
 ![Heatmap](results/heatmap_top_genes.png)
 
 ## Key Findings
