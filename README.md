@@ -1,5 +1,19 @@
 # RNA-seq Analysis of SARS-CoV-2 Infection
 
+# RNA-seq Analysis of SARS-CoV-2 Infection
+
+![Heatmap](results/heatmap_top_genes.png)
+
+## Key Findings
+
+SARS-CoV-2 infection induces a strong transcriptional response characterised by:
+
+- Upregulation of immune-related pathways (B cell and humoral immunity)
+- Increased expression of cell cycle-associated genes (e.g., TK1, PLK1, CCNA2)
+- Clear separation between infected and control samples in PCA
+
+These results suggest coordinated immune activation alongside cell proliferation or cellular dysregulation.
+
 ## Overview
 This project performs differential gene expression analysis of SARS-CoV-2 infection using bulk RNA-seq data. The aim was to identify significantly altered genes and associated biological pathways.
 
@@ -68,6 +82,14 @@ Sample conditions were inferred from sample names due to lack of explicit metada
 - Single-cell RNA-seq analysis to resolve cell-type-specific effects
 - Integration with proteomics or metabolomics data
 - Machine learning approaches for biomarker discovery
+
+## Reproducibility
+
+To reproduce this analysis:
+
+1. Download the dataset from GEO (GSE152418)
+2. Run the R script in the `analysis/` folder
+3. Outputs will be generated in the `results/` and `data/` directories
 
 ## Author
 James Hughes
