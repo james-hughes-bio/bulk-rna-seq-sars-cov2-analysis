@@ -4,7 +4,13 @@
 This project performs differential gene expression analysis of SARS-CoV-2 infection using bulk RNA-seq data. The aim was to identify significantly altered genes and associated biological pathways.
 
 ## Dataset
-Publicly available RNA-seq dataset (GEO: GSE152418).
+
+The dataset used in this analysis is publicly available from the Gene Expression Omnibus (GEO):
+
+Accession: GSE152418
+
+Data can be accessed at:
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418
 
 ## Methods
 - Differential expression analysis: DESeq2
