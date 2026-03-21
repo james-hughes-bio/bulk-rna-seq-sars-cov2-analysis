@@ -1,0 +1,362 @@
+---
+title: "RNA-seq Analysis of SARS-CoV-2 Infection"
+author: "James Hughes"
+date: "2026-03-19"
+output:
+  pdf_document: default
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+set.seed(42)
+# setwd("C:/Users/james/OneDrive/Desktop/Additional Assignment")
+```
+
+# Introduction
+
+RNA sequencing (RNA-seq) enables comprehensive analysis of gene expression across biological conditions (Wang et al., 2009). In this study, differential gene expression was performed to investigate the transcriptional response to SARS-CoV-2 using a publicly available RNA-seq dataset. The aim of the analysis was to identify significant genes that are differentially expressed and to determine their biological pathway in response to viral infection.
+It was hypothesised that SARS-CoV-2 infection induces differential expression of immune-related and cell cycle-associated genes.
+
+# Methods
+
+## Setup
+
+```{r setup, message=FALSE, warning=FALSE}
+library(apeglm)
+library(ggplot2)
+library(ggrepel)
+library(pheatmap)
+library(DESeq2)
+library(enrichplot)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(AnnotationDbi)
+```
+
+### Load Data
+
+```{r load-data}
+expr <- read.delim("GSE152418_p20047_Study1_RawCounts.txt", row.names = 1)
+```
+
+### Metadata
+
+```{r}
+samples <- colnames(expr)
+
+meta <- data.frame(sample = samples)
+meta$condition <- ifelse(grepl("nCoV|nCOV", samples), "Infected", "Control")
+meta$condition <- factor(meta$condition, levels = c("Control", "Infected"))
+rownames(meta) <- samples
+```
+
+Samples were grouped into infected and control conditions based on dataset annotations, with biological replicates present in each group. 
+Due to lack of explicit metadata annotation, sample conditions were inferred from sample names, which may introduce classification bias
+
+### Data Pre-processing
+
+The count matrix was aligned to the sample metadata to ensure correct sample ordering. Lowly expressed genes were filtered out by retaining genes with a minimum total count across samples, reducing noise and improving statistical power for downstream analysis.
+
+```{r}
+expr <- expr[, rownames(meta)]
+keep <- rowSums(expr) >= 10  # Filter out lowly expressed genes to reduce noise
+expr <- expr[keep, ]
+```
+
+### DESeq2 Analysis
+
+Differential expression analysis was performed using DESeq2, a widely used method for RNA-seq analysis that models count data and controls false discovery rates (Love et al., 2014).
+```{r}
+# Create DESeq2 dataset with condition as the main variable of interest
+
+dds <- DESeqDataSetFromMatrix(
+  countData = expr,
+  colData = meta,
+  design = ~ condition
+)
+
+dds <- DESeq(dds)
+
+# Apply log2 fold change shrinkage to improve effect size estimation
+
+res <- lfcShrink(dds, coef = "condition_Infected_vs_Control", type = "apeglm")
+res <- res[!is.na(res$padj), ]
+```
+The design formula specified condition as the primary explanatory variable, enabling identification of genes associated with infection status.
+A log2 fold change threshold of 1 was applied to focus on biologically meaningful expression changes, while an adjusted p-value threshold of 0.05 was used to control for false discovery rate.
+
+DESeq2 is widely used for RNA-seq analysis due to its robust modelling of count-based data and control of false discovery rates.
+
+## Visualisation
+
+### PCA
+
+```{r fig.cap="Principal Component Analysis (PCA) showing separation between infected and control samples, indicating that infection status is a major source of variation in gene expression."}
+vsd <- vst(dds, blind = FALSE)
+pca_plot <- plotPCA(vsd, intgroup = "condition")
+pca_plot +
+  labs(title = "PCA of Gene Expression") 
+```
+
+### Volcano Plot
+
+```{r fig.cap="Volcano plot of differential gene expression showing log2 fold change versus statistical significance. Thresholds of |log2FC| > 1 and adjusted p-value < 0.05 are indicated by dashed lines. Red points represent upregulated genes, blue points represent downregulated genes, and grey points are not significant."}
+res_df <- as.data.frame(res)
+
+res_df$symbol <- mapIds(
+  org.Hs.eg.db,
+  keys = gsub("\\..*", "", rownames(res_df)),
+  column = "SYMBOL",
+  keytype = "ENSEMBL",
+  multiVals = "first"
+)
+
+res_df$group <- "NS"
+res_df$group[res_df$padj < 0.05 & res_df$log2FoldChange > 1] <- "Up"
+res_df$group[res_df$padj < 0.05 & res_df$log2FoldChange < -1] <- "Down"
+
+top_genes <- head(rownames(res_df[order(res_df$padj), ]), 10)
+label_data <- res_df[rownames(res_df) %in% top_genes, ]
+
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), colour = group)) +
+ geom_point(alpha = 0.5, size = 1) +
+  
+geom_text_repel(
+  data = label_data,
+  aes(label = symbol),
+  size = 3,
+  max.overlaps = Inf,
+  box.padding = 0.6,
+  point.padding = 0.4,
+  segment.color = "black",
+  segment.size = 0.3,
+  force = 2,
+  show.legend = FALSE
+) +
+  
+  scale_colour_manual(values = c("Down" = "navy", "Up" = "firebrick3", "NS" = "gray")) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  labs(title = "Volcano Plot of Differential Expression") +
+  theme_minimal()
+```
+
+### MA Plot
+
+```{r fig.cap="MA plot showing the relationship between mean expression and log2 fold change, demonstrating that differential expression occurs across a wide range of expression levels."}
+res_df <- as.data.frame(res)
+
+res_df$significant <- "NS"
+res_df$significant[res_df$padj < 0.05 & abs(res_df$log2FoldChange) > 1] <- "Significant"
+
+ggplot(res_df, aes(x = baseMean, y = log2FoldChange, colour = significant)) +
+geom_point(alpha = 0.3, size = 0.9)+
+  scale_x_log10() +
+  scale_colour_manual(values = c("NS" = "grey", "Significant" = "red")) +
+  geom_hline(yintercept = 0, colour = "black") +
+  geom_hline(yintercept = c(-1, 1), linetype = "dashed") +
+  labs(
+    title = "MA Plot of Differential Expression",
+    x = "Mean of normalized counts",
+    y = "Log2 fold change",
+    colour = "Significance"
+  ) +
+  theme_minimal()
+```
+
+### Heat-map
+
+```{r fig.cap="Heatmap of the top 20 differentially expressed genes showing distinct clustering of infected and control samples, indicating consistent expression patterns within each condition."}
+top_genes <- rownames(res)[order(res$padj)][1:20]
+
+# Convert ENSEMBL → SYMBOL
+gene_symbols <- mapIds(
+  org.Hs.eg.db,
+  keys = gsub("\\..*", "", top_genes),
+  column = "SYMBOL",
+  keytype = "ENSEMBL",
+  multiVals = "first"
+)
+
+heatmap_data <- assay(vsd)[top_genes, ]
+rownames(heatmap_data) <- gene_symbols
+
+annotation_col <- data.frame(condition = meta$condition)
+rownames(annotation_col) <- rownames(meta)
+
+pheatmap(
+  heatmap_data,
+  scale = "row",
+  color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+  annotation_col = annotation_col,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  show_colnames = FALSE,
+  fontsize_row = 8
+)
+```
+
+### Sample Distance Heat-map
+
+```{r fig.cap="Sample-to-sample distance heatmap demonstrating clustering based on global gene expression profiles, with infected samples grouping separately from controls."}
+sampleDists <- dist(t(assay(vsd)))
+
+pheatmap(
+  as.matrix(sampleDists),
+  annotation_col = annotation_col,
+  color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+  show_colnames = FALSE,
+  show_rownames = FALSE,
+)
+
+```
+
+### GSEA (GO)
+Functional enrichment analysis was conducted using the clusterProfiler package (Yu et al., 2012). 
+
+Gene set enrichment analysis was performed to identify coordinated biological pathways associated with SARS-CoV-2 infection (Subramanian et al., 2005).
+
+
+```{r fig.cap="Gene Set Enrichment Analysis (GSEA) dotplot showing significant enrichment of immune-related and cell cycle–associated biological processes."}
+genes <- gsub("\\..*", "", rownames(res))
+
+gene_list <- res$log2FoldChange  
+names(gene_list) <- genes
+gene_list <- gene_list[!is.na(gene_list)]
+
+# Convert ENSEMBL IDs to ENTREZ IDs required for GSEA
+
+gene_df <- bitr(
+  names(gene_list),
+  fromType = "ENSEMBL",
+  toType = "ENTREZID",
+  OrgDb = org.Hs.eg.db
+)
+
+gene_df <- gene_df[!is.na(gene_df$ENTREZID), ]
+gene_df <- gene_df[!duplicated(gene_df$ENTREZID), ]
+
+gene_list <- gene_list[gene_df$ENSEMBL]
+names(gene_list) <- gene_df$ENTREZID
+gene_list <- sort(gene_list, decreasing = TRUE)  # Rank genes by log2 fold change for GSEA input
+
+ego_gsea <- gseGO(
+  geneList = gene_list,
+  OrgDb = org.Hs.eg.db,
+  ont = "BP",
+  verbose = FALSE
+)
+
+dotplot(ego_gsea, showCategory = 8)
+```
+
+## Enrichment curve (top pathway)
+
+```{r fig.cap="GSEA enrichment plot for the top enriched pathway, illustrating the distribution of pathway-associated genes across the ranked gene list and their contribution to the enrichment score."}
+gseaplot2(ego_gsea, geneSetID = 1)
+```
+
+## Results
+
+### Differentially Expressed Genes
+
+```{r}
+sig <- res[res$padj < 0.05 & abs(res$log2FoldChange) > 1, ]
+```
+
+### Differential Expression Summary
+
+```{r}
+summary(res, alpha = 0.05)
+nrow(sig)
+sum(sig$log2FoldChange > 0)
+sum(sig$log2FoldChange < 0)
+```
+
+### Top Differentially Expressed Genes
+
+```{r}
+top <- head(sig[order(sig$padj), ], 5)
+
+top$symbol <- mapIds(
+  org.Hs.eg.db,
+  keys = gsub("\\..*", "", rownames(top)),
+  column = "SYMBOL",
+  keytype = "ENSEMBL",
+  multiVals = "first"
+)
+
+top
+```
+
+### Enriched Biological Pathways
+
+```{r}
+head(ego_gsea@result[, c("Description", "NES", "p.adjust")])
+```
+## Results Interpretation
+
+The analysis of differential genes showed that SARS-CoV-2 infection leads to a substantial transcriptional response, with 6393 genes being up-regulated and 2869 genes down regulated (adjusted p-value < 0.05).
+
+Infection status was therefore a strong independent source of variation within the data-set as determined by Principal Component Analysis (PCA) which distinctly separated uninfected and infected samples (Figure 1). 
+
+Volcano and MA plots show there are a large proportion of up-regulated genes among the significantly differentially expressed genes, suggesting widespread transcriptional activation associated with infection. The volcano plot (Figure 2) shows a strong shift in transcription in favour of upregulation, signalling activated infection-responsive biological pathways. The MA plot also shows that differential expression occurs across a wide range of gene expression levels.
+
+Most importantly, TK1, RRM2, PLK1, UBE2C, and CCNA2 were linked to DNA replication and cell cycle progression. The activation of the genes points to cell cycle associated transcriptional program, and this could also be an indication of immune cell expansion, or a dysregulation of host cells. 
+The heat map of the major differentially expressed genes (Figure 4) shows a grouping together of the infected and controls based on distinct patterns of gene expression under the two conditions. This is further supported by the sample-to-sample distance analysis (Figure 5), with samples from infected populations clustered together and distinguished from controls. 
+
+Gene Set Enrichment Analysis (GSEA) results (Figure 6) show significant enrichment of immune-related pathways, such as B cell-mediated immunity and immunoglobulin-mediated pathways. These findings indicate enrichment of immune-related pathways with concurrent activation of pathways associated with cell cycles. 
+
+Overall, results demonstrate a coordinated biological response characterised by immune activation alongside increased expression of cell cycle-associated genes, which may reflect cellular proliferation or changes in cell population composition.
+## Discussion
+
+The increased activity of immune pathways observed is likely due to the host response to viral infection. SARS-CoV-2 infection triggers both innate and adaptive immune responses, including B cell activation and antibody generation. The immunoglobulin-mediated and humoral immune pathways are some of the pathways enriched that indicate the presence of transcriptional effects central to adaptive immune pathways. 
+
+Infection-related immune responses, notably by lymphocytes, may reflect increased expression of cell cycle-associated genes, potentially indicating cellular proliferation or shifts in cell population composition, reflected by expression of cell cycle genes, including PLK1, CCNA2, and RRM2. This may be virus induced cellular stress responses or compensatory mechanisms initiated due to viral replication and host cell damage. 
+
+The heat-map and sample distance analysis provided more evidence to back the observations. Also, there was a consistent expression pattern observed in the top DEGs across samples. This shows that the transcriptional reaction to the infection is strong and reproducible. 
+
+The results tally with those of other viral infections where activation of the immune response and cellular activation are trademarks for the host. In the case of high prominence of the cell cycle, detailed investigations might be necessary to ensure whether its relevance is due to expansion of immune cells or dysregulation of host’s cellular machineries as a consequence of viral infection. 
+
+## Critical Evaluation
+
+Despite the effectiveness of this analysis, there are several limitations to be taken into account.
+The use of bulk RNA-seq limits the resolution of cell-type-specific transcriptional responses, making it difficult to determine whether observed changes arise from shifts in cell composition or true transcriptional regulation within individual cell types. This distinction is critical for viral-induced immune activation because there is a chance that the observed effect is due to immune cell infiltration rather than a transcriptional regulation event. 
+
+Second, the analysis models infection status as the primary explanatory variable, however, sequencing depth, batch effects, and sample heterogeneity may also contribute to observed variation, and other confounding factors may have an impact on findings and interpretation. Thus, technical confounds may affect the findings and their interpretation, even though the DESeq2 assumes some variation sources’ technical nature. 
+
+Other than that, an aspect that can affect the identified genes includes the thresholds chosen for significance (adjusted p-value < 0.05 and log2 fold change > 1). Differential enrichment pathways may also be observed following the use of different thresholds. 
+
+Also, the use of gene-level summarisation may hide issues with isoform-specific regulation, which may be relevant in viral infection contexts where alternative splicing can occur.
+
+In the end, functional interpretation is left in the hands of annotation databases such as Gene Ontology that can be biased or incomplete to well-characterised genes. It is, therefore, appropriate always to interpret enrichment results cautiously and validate them experimentally when possible. 
+
+## Future Steps 
+
+The results need to be further refined and validated by future studies. It would be a significant area to study based on scRNA-seq’s ability to resolve cell-type-specific transcriptional responses. The enrichment of B cell–mediated and immunoglobulin-associated pathways points to the activation of the adaptive immune response, providing evidence that antibody–mediated mechanisms form a key part of the host response to SARS-CoV-2 infection. 
+
+Also, if we integrate proteomic or metabolomic data it can also give us an indication of how transcriptional changes manifesting in functional cell responses. Integrating different omics data would enhance biological interpretation of the findings and identify key regulatory mechanisms during infection. 
+
+It is also important to validate experimentally the identified differentially expressed genes and pathways. For instance, quantitative PCR (qPCR) or flow cytometry tools could be used to validate gene expression changes and examine immune cell activation in independent samples. 
+
+From a computational perspective, another statistical model or machine Learning approaches can also be implemented upon for identifying infection biomarkers & predictive signatures. For example, classification models would be trained to discriminate infected samples from the controls based on their gene expression. 
+
+Lastly, it would be useful to analyse longitudinal or time-course data to understand the temporal dynamics of the host response to SARS-CoV-2 infection. Therefore, early and late response can be identified, and further characterization of disease progression can be performed. 
+
+## Conclusion 
+
+In conclusion, there is extensive differential gene expression in response to transcriptional changes triggered by SARS-CoV-2 infection, according to this study. There is also enhanced expression of other cell cycle-related genes with evidence showing a marked activation of immune-related pathways especially B cell and humoral immunity pathways. 
+
+These results suggest that host immune activation and increased cell cycle activity occur concurrently that may contribute to the host response to viral infection.
+
+Collectively, these findings indicate coordinated crosstalk between immune system activation and cell cycle control after viral infection, revealing biologically salient circuitry warranting future therapeutic exploration. 
+
+## References
+
+Love, M. I., Huber, W., and Anders, S. (2014). Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biology, 15(12), 550.
+
+Wang, Z., Gerstein, M., and Snyder, M. (2009). RNA-Seq: a revolutionary tool for transcriptomics. Nature Reviews Genetics, 10(1), 57–63.
+
+Subramanian, A., Tamayo, P., Mootha, V. K., et al. (2005). Gene set enrichment analysis: A knowledge-based approach for interpreting genome-wide expression profiles. Proceedings of the National Academy of Sciences, 102(43), 15545–15550.
+
+Yu, G., Wang, L.-G., Han, Y., and He, Q.-Y. (2012). clusterProfiler: An R package for comparing biological themes among gene clusters. OMICS, 16(5), 284–287.
