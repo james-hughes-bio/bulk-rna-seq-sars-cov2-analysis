@@ -1,42 +1,35 @@
 # RNA-seq Analysis of SARS-CoV-2 Infection
 
-![Heatmap](results/heatmap_top_genes.png)
-
-## Key Findings
-
-SARS-CoV-2 infection induces a strong transcriptional response characterised by:
-
-- Upregulation of immune-related pathways (B cell and humoral immunity)
-- Increased expression of cell cycle-associated genes (e.g., TK1, PLK1, CCNA2)
-- Clear separation between infected and control samples in PCA
-
-These results suggest coordinated immune activation alongside cell proliferation or cellular dysregulation.
-
 ## Overview
-This project performs differential gene expression analysis of SARS-CoV-2 infection using bulk RNA-seq data. The aim was to identify significantly altered genes and associated biological pathways.
+This project presents a bulk RNA-seq differential expression analysis of SARS-CoV-2 infection using a publicly available dataset. The aim was to identify genes significantly associated with infection status and to investigate the biological pathways underlying the host transcriptional response.
 
 ## Dataset
+The dataset used in this study is publicly available from the Gene Expression Omnibus (GEO).
 
-The dataset used in this analysis is publicly available from the Gene Expression Omnibus (GEO):
-
-Accession: GSE152418
-
-Data can be accessed at:
-https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418
+- **Accession:** GSE152418
+- **Source:** https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418
 
 ## Methods
-- Differential expression analysis: DESeq2
-- Log fold change shrinkage: apeglm
-- Visualisation: PCA, volcano plot, MA plot, heatmap
-- Functional enrichment: Gene Set Enrichment Analysis (GSEA) using clusterProfiler
+The analysis was performed in R using a standard bulk RNA-seq workflow:
 
-## Key Results
-- 6393 genes upregulated and 2869 downregulated (padj < 0.05)
-- Strong separation between infected and control samples in PCA
-- Enrichment of immune-related pathways (B cell, humoral response)
-- Upregulation of cell cycle-associated genes (e.g., TK1, PLK1, CCNA2)
+- Differential expression analysis with **DESeq2**
+- Log2 fold-change shrinkage with **apeglm**
+- Visualisation using **ggplot2** and **pheatmap**
+- Functional enrichment analysis using **clusterProfiler**
+- Gene annotation using **org.Hs.eg.db** and **AnnotationDbi**
 
-## Visualisations
+## Key Findings
+Using an adjusted p-value threshold of **0.05** and an absolute log2 fold change threshold of **1**, a total of **3879** genes were identified as significantly differentially expressed, including **3688 upregulated** and **191 downregulated** genes in infected samples.
+
+The main findings were:
+
+- Clear separation between infected and control samples in PCA
+- Strong upregulation of immune-related pathways, including **B cell-mediated immunity** and **immunoglobulin-mediated immune response**
+- Increased expression of cell cycle-associated genes, including **TK1, RRM2, PLK1, UBE2C,** and **CCNA2**
+
+These results suggest that SARS-CoV-2 infection is associated with a coordinated host transcriptional response involving both immune activation and proliferation-related transcriptional programmes.
+
+## Selected Visualisations
 
 ### PCA
 ![PCA](results/pca.png)
@@ -44,50 +37,47 @@ https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418
 ### Volcano Plot
 ![Volcano](results/volcano.png)
 
-### MA Plot
-![MA](results/ma_plot.png)
-
-### Heatmap
+### Heatmap of Top Differentially Expressed Genes
 ![Heatmap](results/heatmap_top_genes.png)
 
-### Sample Distance Heatmap
-![Distance](results/sample_distance_heatmap.png)
-
-### GSEA Dotplot
-![GSEA](results/gsea_dotplot.png)
-
-### GSEA Enrichment Curve
-![GSEA Curve](results/gsea_enrichment.png)
-
-## Processed Data
-
-Processed results from the analysis are available in the `data/` directory:
-
-- Top differentially expressed genes (`top_100_DEGs.csv`)
-- Full list of significant DEGs
-- GSEA enrichment results
-- Sample metadata
-
-## Key Findings
-SARS-CoV-2 infection induces a coordinated transcriptional response characterised by:
-- Immune system activation
-- Increased expression of cell cycle-related genes
-
 ## Limitations
-Sample conditions were inferred from sample names due to lack of explicit metadata, which may introduce classification bias.
+This analysis has several limitations that should be considered:
 
-## Future Work
-- Single-cell RNA-seq analysis to resolve cell-type-specific effects
-- Integration with proteomics or metabolomics data
-- Machine learning approaches for biomarker discovery
+- Sample conditions were inferred from sample names due to lack of explicit metadata, which may introduce classification bias
+- Bulk RNA-seq does not resolve cell-type-specific effects
+- Potential technical or biological confounders could not be fully modelled
+- Functional enrichment analysis depends on existing annotation databases and should be interpreted cautiously
+
+## Technical Skills Demonstrated
+- Bulk RNA-seq differential expression analysis
+- Statistical modelling of count data with DESeq2
+- Effect-size shrinkage with apeglm
+- Transcriptomic data visualisation
+- Functional enrichment analysis
+- Gene annotation and identifier mapping
+- Critical evaluation of methodological limitations in bulk RNA-seq studies
 
 ## Reproducibility
-
 To reproduce this analysis:
 
-1. Download the dataset from GEO (GSE152418)
-2. Run the R script in the `analysis/` folder
-3. Outputs will be generated in the `results/` and `data/` directories
+1. Download the raw count dataset from GEO accession **GSE152418**
+2. Place the count file in the appropriate project directory
+3. Open and knit `rna_seq_analysis.Rmd`
+4. Generated outputs will be written to the relevant results folders/files in the repository
+
+## Files
+- `rna_seq_analysis.Rmd` — main analysis workflow
+- `rna_seq_analysis.pdf` — rendered project report
+- `results/` — figures and output files
+- `data/` — processed tables and supporting files
+
+## Future Directions
+Possible next steps include:
+
+- Single-cell RNA-seq analysis to resolve cell-type-specific responses
+- Integration with proteomics or metabolomics data
+- Experimental validation of key differentially expressed genes
+- Predictive modelling or biomarker discovery using machine learning
 
 ## Author
 James Hughes
