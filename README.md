@@ -1,83 +1,116 @@
-# RNA-seq Analysis of SARS-CoV-2 Infection
+# Bulk RNA-seq Analysis of SARS-CoV-2 Infection
 
-## Overview
-This project presents a bulk RNA-seq differential expression analysis of SARS-CoV-2 infection using a publicly available dataset. The aim was to identify genes significantly associated with infection status and to investigate the biological pathways underlying the host transcriptional response.
+This repository contains a bulk RNA-seq differential expression analysis of SARS-CoV-2 infection using a publicly available human transcriptomic dataset. The project combines statistical analysis, biological interpretation, and data visualisation in R, with outputs presented in both source (`.Rmd`) and report (`.pdf`) formats.
 
-## Dataset
-The dataset used in this study is publicly available from the Gene Expression Omnibus (GEO).
+## Project Snapshot
 
-- **Accession:** GSE152418
-- **Source:** https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418
+| Item | Details |
+| --- | --- |
+| Dataset | GEO accession `GSE152418` |
+| Analysis type | Bulk RNA-seq differential expression |
+| Primary tool | `DESeq2` |
+| Organism | Human |
+| Conditions compared | `Infected` vs `Control` |
+| Significant DEGs used in report | `3879` |
+| Upregulated | `3688` |
+| Downregulated | `191` |
 
-## Methods
-The analysis was performed in R using a standard bulk RNA-seq workflow:
+## Why This Project Matters
 
-- Differential expression analysis with **DESeq2**
-- Log2 fold-change shrinkage with **apeglm**
-- Visualisation using **ggplot2** and **pheatmap**
-- Functional enrichment analysis using **clusterProfiler**
-- Gene annotation using **org.Hs.eg.db** and **AnnotationDbi**
+This project was designed to investigate how SARS-CoV-2 infection reshapes host gene expression. It demonstrates an end-to-end transcriptomics workflow, from raw count data to biological interpretation, and highlights the kind of practical computational biology work used in real RNA-seq studies.
 
-## Key Findings
-Using an adjusted p-value threshold of **0.05** and an absolute log2 fold change threshold of **1**, a total of **3879** genes were identified as significantly differentially expressed, including **3688 upregulated** and **191 downregulated** genes in infected samples.
+The analysis shows:
 
-The main findings were:
+- clear separation between infected and control samples in PCA
+- widespread transcriptional activation in infected samples
+- strong enrichment of immune-associated pathways such as `immunoglobulin mediated immune response` and `B cell mediated immunity`
+- prominent cell cycle-associated genes including `TK1`, `RRM2`, `PLK1`, `UBE2C`, and `CCNA2`
 
-- Clear separation between infected and control samples in PCA
-- Strong upregulation of immune-related pathways, including **B cell-mediated immunity** and **immunoglobulin-mediated immune response**
-- Increased expression of cell cycle-associated genes, including **TK1, RRM2, PLK1, UBE2C,** and **CCNA2**
+Together, these results suggest that SARS-CoV-2 infection is associated with a coordinated host response involving immune activation and proliferative transcriptional programmes.
 
-These results suggest that SARS-CoV-2 infection is associated with a coordinated host transcriptional response involving both immune activation and proliferation-related transcriptional programmes.
+## Methods Used
 
-## Selected Visualisations
+The workflow was implemented in R and includes:
+
+- count-based differential expression analysis with `DESeq2`
+- log2 fold-change shrinkage with `apeglm`
+- gene annotation with `AnnotationDbi` and `org.Hs.eg.db`
+- exploratory and differential expression visualisation with `ggplot2`, `ggrepel`, and `pheatmap`
+- Gene Ontology enrichment analysis with `clusterProfiler`
+
+## Repository Structure
+
+```text
+bulk-rna-seq-sars-cov2-analysis/
+|-- README.md
+|-- .gitignore
+|-- GSE152418_p20047_Study1_RawCounts.txt
+|-- rna_seq_analysis.Rmd
+|-- rna_seq_analysis.pdf
+|-- data/
+|   |-- sample_metadata.csv
+|   |-- all_significant_DEGs.csv
+|   |-- top_100_DEGs.csv
+|   `-- gsea_results.csv
+`-- results/
+    |-- pca.png
+    |-- volcano.png
+    |-- ma_plot.png
+    |-- heatmap_top_genes.png
+    |-- sample_distance_heatmap.png
+    |-- gsea_dotplot.png
+    `-- gsea_enrichment.png
+```
+
+## Key Files
+
+- [`GSE152418_p20047_Study1_RawCounts.txt`](./GSE152418_p20047_Study1_RawCounts.txt): raw count matrix used as input for the analysis
+- [`rna_seq_analysis.Rmd`](./rna_seq_analysis.Rmd): full analysis workflow and code
+- [`rna_seq_analysis.pdf`](./rna_seq_analysis.pdf): rendered report
+- [`data/top_100_DEGs.csv`](./data/top_100_DEGs.csv): top differentially expressed genes
+- [`data/gsea_results.csv`](./data/gsea_results.csv): enriched biological pathways
+
+## Selected Figures
 
 ### PCA
-![PCA](results/pca.png)
+![PCA](./results/pca.png)
 
 ### Volcano Plot
-![Volcano](results/volcano.png)
+![Volcano Plot](./results/volcano.png)
 
 ### Heatmap of Top Differentially Expressed Genes
-![Heatmap](results/heatmap_top_genes.png)
+![Heatmap](./results/heatmap_top_genes.png)
 
-## Limitations
-This analysis has several limitations that should be considered:
+## Biological Interpretation
 
-- Sample conditions were inferred from sample names due to lack of explicit metadata, which may introduce classification bias
-- Bulk RNA-seq does not resolve cell-type-specific effects
-- Potential technical or biological confounders could not be fully modelled
-- Functional enrichment analysis depends on existing annotation databases and should be interpreted cautiously
+The transcriptomic signature observed here is consistent with a strong host response to viral infection. Immune-related enrichment supports activation of adaptive immune processes, while the strong cell cycle signal may reflect immune-cell proliferation, altered blood cell composition, or dysregulation of host cellular machinery during infection.
+
+Because this is a bulk RNA-seq dataset, these results should be interpreted with appropriate caution. Bulk expression profiles cannot fully separate true within-cell transcriptional changes from shifts in cell-type composition.
 
 ## Technical Skills Demonstrated
-- Bulk RNA-seq differential expression analysis
-- Statistical modelling of count data with DESeq2
-- Effect-size shrinkage with apeglm
-- Transcriptomic data visualisation
-- Functional enrichment analysis
-- Gene annotation and identifier mapping
-- Critical evaluation of methodological limitations in bulk RNA-seq studies
+
+- RNA-seq preprocessing and quality-aware filtering
+- differential expression modelling with count data
+- effect-size shrinkage and interpretation of log2 fold changes
+- pathway enrichment analysis
+- transcriptomic data visualisation
+- biological interpretation of host-response signatures
+- reproducible reporting with R Markdown
 
 ## Reproducibility
-To reproduce this analysis:
 
-1. Download the raw count dataset from GEO accession **GSE152418**
-2. Place the count file in the appropriate project directory
-3. Open and knit `rna_seq_analysis.Rmd`
-4. Generated outputs will be written to the relevant results folders/files in the repository
+To reproduce the analysis:
 
-## Files
-- `rna_seq_analysis.Rmd` — main analysis workflow
-- `rna_seq_analysis.pdf` — rendered project report
-- `results/` — figures and output files
-- `data/` — processed tables and supporting files
+1. Open [`rna_seq_analysis.Rmd`](./rna_seq_analysis.Rmd) in RStudio.
+2. Ensure the required packages are installed:
+   `DESeq2`, `apeglm`, `ggplot2`, `ggrepel`, `pheatmap`, `clusterProfiler`, `enrichplot`, `org.Hs.eg.db`, `AnnotationDbi`.
+3. Knit the R Markdown document.
+4. Review the generated report and exported result tables in `data/`.
 
-## Future Directions
-Possible next steps include:
+## Dataset Source
 
-- Single-cell RNA-seq analysis to resolve cell-type-specific responses
-- Integration with proteomics or metabolomics data
-- Experimental validation of key differentially expressed genes
-- Predictive modelling or biomarker discovery using machine learning
+- GEO: [GSE152418](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418)
 
 ## Author
+
 James Hughes
