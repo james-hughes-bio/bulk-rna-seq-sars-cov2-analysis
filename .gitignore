@@ -1,5 +1,19 @@
+# Local sessions and generated runs
 .RData
 .RDataTmp
 .Rhistory
-Bonus Assignment.docx
+.Rproj.user/
+__pycache__/
+outputs/
+*_cache/
+*_files/
+# External raw inputs (keep out of Git)
+data/raw/
+*.rds
+*.RDS
+.r-library/
+.cache/
+.Renviron
+# Retain historical exclusions for loose downloads/coursework.
 GSE152418_p20047_Study1_RawCounts.txt.gz
+Bonus Assignment.docx
