@@ -1,0 +1,8 @@
+{
+  "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE152nnn/GSE152418/matrix/GSE152418_series_matrix.txt.gz",
+  "retrieved_utc": "2026-09-05T17:46:56.888160+00:00",
+  "sha256": "0475ae4be8f56997d1fc475f7aaa1306cd256e49bf63d5234a64a6c992529c0c",
+  "rows": 34,
+  "method": "GEO sample characteristics; normalized sample IDs matched to legacy bulk metadata",
+  "donor_mapping": "Not inferred from library index, age, sex, or barcode"
+}
