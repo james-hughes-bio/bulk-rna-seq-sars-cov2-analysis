@@ -4,7 +4,7 @@ A compact bulk RNA-seq analysis of GSE152418 PBMC transcriptomes using DESeq2, a
 
 The analysis uses the original 34 libraries: 17 controls and 17 libraries carrying the historical `Infected` label. The infected group contains 16 acute COVID-19 libraries and one convalescent library, and repeat-draw identifiers are present. The condition-only DESeq2 model is therefore treated as an exploratory reproduction rather than a donor-independent disease-effect analysis.
 
-[Analysis notebook](analysis/bulk_analysis.Rmd) · [Portfolio report](outputs/bulk_analysis.html) · [Figures](outputs/figures) · [Result tables](outputs/tables)
+[Standalone R script](analysis/bulk_analysis.R) · [Analysis notebook](analysis/bulk_analysis.Rmd) · [Portfolio report](outputs/bulk_analysis.html) · [Figures](outputs/figures) · [Result tables](outputs/tables)
 
 ## Key results
 
@@ -51,7 +51,7 @@ flowchart LR
 ## Repository structure
 
 - `data/` — gene-count matrix and GEO-derived sample metadata
-- `analysis/` — complete R Markdown workflow
+- `analysis/` — standalone R script and complete R Markdown workflow
 - `outputs/` — figures, result tables and a compact HTML report
 - `README.md` — project overview and reproduction instructions
 
@@ -63,15 +63,21 @@ The workflow performs input and sample-ID validation, low-count filtering, DESeq
 
 Use R 4.5.2 or a compatible recent R installation with these packages available:
 
-`DESeq2`, `apeglm`, `ggplot2`, `ggrepel`, `pheatmap`, `clusterProfiler`, `enrichplot`, `org.Hs.eg.db`, `AnnotationDbi`, `dplyr`, `readr`, `tibble`, `tidyr`, `BiocParallel`, `rmarkdown`, and `knitr`.
+`DESeq2`, `apeglm`, `ggplot2`, `ggrepel`, `pheatmap`, `clusterProfiler`, `enrichplot`, `org.Hs.eg.db`, `AnnotationDbi`, `dplyr`, `tibble`, `BiocParallel`, `rmarkdown`, and `knitr`.
 
-From the repository root:
+Run the complete analysis directly:
+
+```sh
+Rscript analysis/bulk_analysis.R
+```
+
+Or render the documented R Markdown report:
 
 ```sh
 Rscript -e "rmarkdown::render('analysis/bulk_analysis.Rmd', output_dir='outputs')"
 ```
 
-The notebook writes generated tables to `outputs/tables/`, figures to `outputs/figures/`, and the rendered computational report to `outputs/`.
+Both workflows write generated tables to `outputs/tables/` and figures to `outputs/figures/`.
 
 ## Data and source study
 
@@ -85,7 +91,7 @@ Arunachalam PS et al. *Systems biological assessment of immunity to mild versus 
 
 ## Technical skills demonstrated
 
-R, Bioconductor, DESeq2, apeglm, bulk RNA-seq analysis, differential expression, PCA, gene-set enrichment analysis, gene-identifier mapping, data visualisation, statistical interpretation, and reproducible R Markdown workflows.
+R, Bioconductor, DESeq2, apeglm, bulk RNA-seq analysis, differential expression, PCA, gene-set enrichment analysis, gene-identifier mapping, data visualisation, statistical interpretation, and reproducible R/R Markdown workflows.
 
 ## Limitations
 
