@@ -27,6 +27,27 @@ The analysis uses the original 34 libraries: 17 controls and 17 libraries carryi
 
 ![GSEA dot plot](outputs/figures/gsea_dotplot.png)
 
+## Workflow
+
+```mermaid
+flowchart LR
+    A[Gene-count matrix + GEO metadata] --> B[Input and sample-ID validation]
+    B --> C[Low-count filtering]
+    C --> D[DESeq2 differential expression]
+    D --> E[apeglm effect-size shrinkage]
+    E --> F[PCA, volcano, MA and heatmaps]
+    E --> G[Gene-ID mapping and GO GSEA]
+    F --> H[Figures and result tables]
+    G --> H
+```
+
+## Selected outputs
+
+- [Full DESeq2 results with gene symbols](outputs/tables/all_DESeq2_results_with_symbols.csv)
+- [Significant differentially expressed genes](outputs/tables/all_significant_DEGs.csv)
+- [Top 100 differentially expressed genes](outputs/tables/top_100_DEGs.csv)
+- [GO GSEA results](outputs/tables/gsea_results.csv)
+
 ## Repository structure
 
 - `data/` — gene-count matrix and GEO-derived sample metadata
@@ -52,11 +73,19 @@ Rscript -e "rmarkdown::render('analysis/bulk_analysis.Rmd', output_dir='outputs'
 
 The notebook writes generated tables to `outputs/tables/`, figures to `outputs/figures/`, and the rendered computational report to `outputs/`.
 
-## Data
+## Data and source study
 
 The count matrix is derived from GSE152418 and contains gene-level counts rather than FASTQ reads. Metadata are retained from GEO and matched exactly to normalized count-column identifiers before analysis.
 
 GEO: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418
+
+Original study:
+
+Arunachalam PS et al. *Systems biological assessment of immunity to mild versus severe COVID-19 infection in humans.* Science. 2020;369(6508):1210-1220. doi:10.1126/science.abc6261. PMID: 32788292.
+
+## Technical skills demonstrated
+
+R, Bioconductor, DESeq2, apeglm, bulk RNA-seq analysis, differential expression, PCA, gene-set enrichment analysis, gene-identifier mapping, data visualisation, statistical interpretation, and reproducible R Markdown workflows.
 
 ## Limitations
 
