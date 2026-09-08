@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bulk RNA-seq analysis of SARS-CoV-2 PBMC samples</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; max-width: 980px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #202124; }
+    h1, h2 { line-height: 1.2; }
+    .summary { background: #f6f8fa; padding: 18px 22px; border-radius: 8px; }
+    img { max-width: 100%; height: auto; border: 1px solid #ddd; margin: 10px 0 28px; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0 28px; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background: #f6f8fa; }
+    a { color: #0969da; }
+    .note { font-size: 0.95em; color: #57606a; }
+  </style>
+</head>
+<body>
+  <h1>Bulk RNA-seq analysis of SARS-CoV-2 PBMC samples</h1>
+  <p>Static portfolio summary of the retained outputs from the GSE152418 bulk PBMC RNA-seq workflow.</p>
+
+  <div class="summary">
+    <h2>Key results</h2>
+    <ul>
+      <li>34 libraries: 17 controls and 17 with the historical <code>Infected</code> label.</li>
+      <li>3,879 significant genes at adjusted p-value &lt; 0.05 and |shrunken log2 fold change| &gt; 1.</li>
+      <li>3,688 genes higher and 191 lower in the historical infected group.</li>
+      <li>The workflow includes DESeq2, apeglm shrinkage, PCA, heatmaps and GO Biological Process GSEA.</li>
+    </ul>
+  </div>
+
+  <h2>PCA</h2>
+  <img src="figures/pca.png" alt="PCA of gene expression">
+
+  <h2>Volcano plot</h2>
+  <img src="figures/volcano.png" alt="Volcano plot of differential expression">
+
+  <h2>MA plot</h2>
+  <img src="figures/ma_plot.png" alt="MA plot">
+
+  <h2>Top-gene heatmap</h2>
+  <img src="figures/heatmap_top_genes.png" alt="Heatmap of top genes">
+
+  <h2>Sample-distance heatmap</h2>
+  <img src="figures/sample_distance_heatmap.png" alt="Sample distance heatmap">
+
+  <h2>GO enrichment</h2>
+  <img src="figures/gsea_dotplot.png" alt="GSEA dot plot">
+  <img src="figures/gsea_enrichment.png" alt="GSEA enrichment curve">
+
+  <h2>Result tables</h2>
+  <table>
+    <tr><th>File</th><th>Contents</th></tr>
+    <tr><td><a href="tables/all_DESeq2_results_with_symbols.csv">all_DESeq2_results_with_symbols.csv</a></td><td>Full DESeq2 result table with gene symbols.</td></tr>
+    <tr><td><a href="tables/all_significant_DEGs.csv">all_significant_DEGs.csv</a></td><td>Genes passing the retained significance thresholds.</td></tr>
+    <tr><td><a href="tables/top_100_DEGs.csv">top_100_DEGs.csv</a></td><td>Top 100 significant genes ranked by adjusted p-value.</td></tr>
+    <tr><td><a href="tables/gsea_results.csv">gsea_results.csv</a></td><td>GO Biological Process GSEA results.</td></tr>
+  </table>
+
+  <h2>Interpretation</h2>
+  <p>The results are exploratory expression associations under the specified condition-only model. The cohort contains one convalescent library and repeat-draw identifiers, so it is not a clean donor-independent acute-infection contrast. Bulk PBMC expression also cannot distinguish altered cell composition from within-cell transcriptional regulation.</p>
+
+  <p class="note">For the full computational workflow and code, see <a href="../analysis/bulk_analysis.Rmd">analysis/bulk_analysis.Rmd</a>.</p>
+</body>
+</html>
