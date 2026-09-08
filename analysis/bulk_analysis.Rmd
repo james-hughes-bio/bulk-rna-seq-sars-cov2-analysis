@@ -5,38 +5,72 @@ date: "2026-09-05"
 output:
   html_document:
     df_print: paged
-  pdf_document: default
-header-includes:
-  - \usepackage{float}
 ---
 
 ```{r include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.pos = "H")
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 7, fig.height = 6)
 set.seed(42)
 
-repo_root <- normalizePath(if (file.exists("R/validation.R")) "." else "..", mustWork = TRUE)
+repo_root <- if (file.exists(file.path("data", "GSE152418_counts.txt"))) {
+  normalizePath(".", mustWork = TRUE)
+} else {
+  normalizePath("..", mustWork = TRUE)
+}
 knitr::opts_knit$set(root.dir = repo_root)
-source(file.path(repo_root, "R/validation.R"))
-data_dir <- file.path(repo_root, "outputs/bulk/tables")
-results_dir <- file.path(repo_root, "outputs/bulk/figures")
-metadata_path <- file.path(repo_root, "data/metadata/geo_samples.csv")
-dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
-knitr::opts_chunk$set(fig.path = paste0(results_dir, "/"), warning = TRUE)
 
+counts_path <- file.path(repo_root, "data", "GSE152418_counts.txt")
+metadata_path <- file.path(repo_root, "data", "metadata.csv")
+tables_dir <- file.path(repo_root, "outputs", "tables")
+figures_dir <- file.path(repo_root, "outputs", "figures")
+dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+knitr::opts_chunk$set(fig.path = paste0(figures_dir, "/"))
+
+normalise_sample_ids <- function(x) gsub("[-.]", "_", trimws(x))
+
+validate_bulk_inputs <- function(expr, meta) {
+  expr <- as.matrix(expr)
+  if (!is.numeric(expr) || any(!is.finite(expr)) || any(expr < 0) || any(expr != floor(expr))) {
+    stop("Counts must be finite nonnegative integers.")
+  }
+  ids <- normalise_sample_ids(colnames(expr))
+  if (is.null(rownames(expr)) || anyNA(rownames(expr)) || any(!nzchar(rownames(expr))) || anyDuplicated(rownames(expr))) {
+    stop("Gene IDs must be present and unique.")
+  }
+  if (is.null(ids) || anyNA(ids) || any(!nzchar(ids)) || anyDuplicated(ids)) {
+    stop("Sample IDs are missing or collide after normalization.")
+  }
+  if (!all(c("sample", "condition") %in% names(meta))) {
+    stop("Metadata require sample and condition columns.")
+  }
+  meta$sample <- normalise_sample_ids(meta$sample)
+  if (anyNA(meta$sample) || any(!nzchar(meta$sample)) || anyDuplicated(meta$sample) || !setequal(ids, meta$sample)) {
+    stop("Metadata and count samples must match exactly.")
+  }
+  meta <- meta[match(ids, meta$sample), , drop = FALSE]
+  if (anyNA(meta$condition) || any(!meta$condition %in% c("Control", "Infected"))) {
+    stop("Unknown condition in metadata.")
+  }
+  meta$condition <- factor(meta$condition, levels = c("Control", "Infected"))
+  if (any(table(meta$condition) < 2L)) stop("At least two libraries per condition are required.")
+  if (any(colSums(expr) == 0)) stop("Empty count library.")
+  rownames(meta) <- ids
+  colnames(expr) <- ids
+  list(counts = expr, metadata = meta)
+}
 ```
 
 # Introduction
 
-This analysis describes bulk PBMC expression in GSE152418 using the original 34-library cohort and condition-only DESeq2 design. The historical `Infected` label includes 16 acute COVID-19 libraries and one convalescent library; it is not a strictly acute-infection contrast. GEO sample titles also indicate repeat draws for two patient identifiers. Donor independence is unresolved, so this report is an exploratory reproduction of the original model rather than a definitive disease-effect analysis.
+This analysis describes bulk PBMC expression in GSE152418 using the original 34-library cohort and a condition-only DESeq2 design. The historical `Infected` label contains 16 acute COVID-19 libraries and one convalescent library. Repeat-draw identifiers are also present, so donor independence is unresolved. The workflow is therefore treated as an exploratory reproduction rather than a definitive disease-effect analysis.
 
-Counts are gene-level inputs, not FASTQs. This workflow does not establish alignment quality, cell-intrinsic regulation, causal effects, or glycan/protein activity.
+Counts are gene-level inputs rather than FASTQ reads. Bulk expression cannot establish cell-intrinsic regulation, pathway activity, or causality.
 
 # Methods
 
 ## Setup
 
-```{r setup, message=FALSE, warning=FALSE}
+```{r setup}
 library(apeglm)
 library(ggplot2)
 library(ggrepel)
@@ -47,98 +81,60 @@ library(clusterProfiler)
 library(org.Hs.eg.db)
 library(AnnotationDbi)
 library(dplyr)
-library(readr)
 library(tibble)
-library(tidyr)
 BiocParallel::register(BiocParallel::SerialParam())
 ```
 
-### Load Data
+## Load and validate data
 
 ```{r load-data}
-expr <- read.delim(file.path(repo_root, "GSE152418_p20047_Study1_RawCounts.txt"), row.names = 1, check.names = FALSE)
+expr <- read.delim(counts_path, row.names = 1, check.names = FALSE)
 colnames(expr) <- normalise_sample_ids(colnames(expr))
-```
-
-### Metadata
-
-```{r}
-if (!file.exists(metadata_path)) stop("Missing GEO metadata; run scripts/refresh_geo_metadata.py.")
 meta <- read.csv(metadata_path, check.names = FALSE, stringsAsFactors = FALSE)
 validated <- validate_bulk_inputs(expr, meta)
 expr <- validated$counts
 meta <- validated$metadata
-warning("Exploratory original design: includes convalescence and possible repeated donors; see docs/AUDIT.md.")
 sample_counts <- table(meta$condition)
 ```
 
-Metadata are matched one-to-one to normalized count column IDs, with collisions, omissions, and unexpected labels rejected. Disease state and severity are retained from GEO alongside the original analysis label. No condition is inferred from an unmatched sample name.
+Metadata are matched one-to-one to normalized count-column identifiers before analysis. Collisions, omissions, unexpected labels, invalid counts, duplicate gene IDs, and empty libraries cause the analysis to stop.
 
-### Sample Summary
-
-```{r echo=FALSE}
-knitr::kable(
-  as.data.frame(sample_counts),
-  col.names = c("Condition", "Number of samples"),
-  caption = "Sample composition of the bulk RNA-seq dataset."
-)
+```{r sample-summary, echo=FALSE}
+knitr::kable(as.data.frame(sample_counts), col.names = c("Condition", "Number of libraries"), caption = "Sample composition of the bulk RNA-seq dataset.")
 ```
 
-### Data Pre-processing
+## Pre-processing and differential expression
 
-The count matrix was aligned to the sample metadata to ensure correct sample ordering. Lowly expressed genes were filtered out by retaining genes with a minimum total count across samples, reducing noise and improving statistical power for downstream analysis.
+Genes with fewer than 10 total counts across all libraries are removed. Differential expression is estimated with DESeq2 and shrunken with apeglm.
 
-```{r}
+```{r differential-expression}
 expr <- expr[, rownames(meta)]
 genes_before_filter <- nrow(expr)
-keep <- rowSums(expr) >= 10  # Filter out lowly expressed genes to reduce noise
-expr <- expr[keep, ]
+expr <- expr[rowSums(expr) >= 10, ]
 genes_after_filter <- nrow(expr)
-```
 
-After filtering, `r genes_after_filter` genes were retained from the original `r genes_before_filter` genes in the count matrix.
-
-### DESeq2 Analysis
-
-Differential expression analysis was performed using DESeq2, a widely used method for RNA-seq analysis that models count data and controls false discovery rates (Love et al., 2014).
-```{r}
-# Create DESeq2 dataset with condition as the main variable of interest
-
-dds <- DESeqDataSetFromMatrix(
-  countData = expr,
-  colData = meta,
-  design = ~ condition
-)
-
+dds <- DESeqDataSetFromMatrix(countData = expr, colData = meta, design = ~ condition)
 dds <- DESeq(dds)
-
-# Apply log2 fold change shrinkage to improve effect size estimation
-
 res <- lfcShrink(dds, coef = "condition_Infected_vs_Control", type = "apeglm")
-# Keep all tested/filtered rows for audit and a GSEA universe independent of padj.
-# Missing padj values remain explicit and are excluded only from DEG calls.
 
-res_df <- as.data.frame(res) %>%
-  tibble::rownames_to_column("gene_id") %>%
+res_df <- as.data.frame(res) |>
+  tibble::rownames_to_column("gene_id") |>
   dplyr::mutate(ensembl_id = gsub("\\..*", "", gene_id))
 
 symbol_candidates <- AnnotationDbi::mapIds(
-  org.Hs.eg.db, keys = unique(res_df$ensembl_id), column = "SYMBOL",
-  keytype = "ENSEMBL", multiVals = "list"
+  org.Hs.eg.db,
+  keys = unique(res_df$ensembl_id),
+  column = "SYMBOL",
+  keytype = "ENSEMBL",
+  multiVals = "list"
 )
 symbol_candidates <- lapply(symbol_candidates, function(x) sort(unique(x[!is.na(x)])))
-symbol_audit <- data.frame(
-  ensembl_id = names(symbol_candidates),
-  candidates = vapply(symbol_candidates, paste, collapse = ";", character(1)),
-  n_candidates = lengths(symbol_candidates)
-)
 res_df$symbol <- vapply(res_df$ensembl_id, function(id) {
   values <- symbol_candidates[[id]]
   if (length(values) == 1L) values else id
 }, character(1))
-write.csv(symbol_audit, file.path(data_dir, "symbol_mapping_audit.csv"), row.names = FALSE)
 
-res_df <- res_df %>%
+res_df <- res_df |>
   dplyr::mutate(
     deg_class = dplyr::case_when(
       is.na(padj) ~ "Not tested",
@@ -149,269 +145,152 @@ res_df <- res_df %>%
     significant = ifelse(!is.na(padj) & padj < 0.05 & abs(log2FoldChange) > 1, "Significant", "NS")
   )
 ```
-The design formula specified condition as the primary explanatory variable, enabling identification of genes associated with infection status.
-A log2 fold change threshold of 1 was applied to focus on biologically meaningful expression changes, while an adjusted p-value threshold of 0.05 was used to control for false discovery rate.
 
-DESeq2 is widely used for RNA-seq analysis due to its robust modelling of count-based data and control of false discovery rates.
+After filtering, `r genes_after_filter` genes were retained from `r genes_before_filter`. Differentially expressed genes are called at adjusted p-value < 0.05 and absolute shrunken log2 fold change > 1.
 
-## Visualisation
+# Visualisation
 
-### PCA
+## PCA
 
-```{r fig.cap="PCA coloured by the original condition label; separation does not establish an independent condition effect.", fig.pos="H", fig.width=7, fig.height=5, out.width="85%", fig.align="center"}
+```{r pca}
 vsd <- vst(dds, blind = FALSE)
-pca_plot <- plotPCA(vsd, intgroup = "condition")
-pca_plot +
-  labs(title = "PCA of Gene Expression")
+pca_plot <- plotPCA(vsd, intgroup = "condition") + labs(title = "PCA of Gene Expression")
+print(pca_plot)
+ggsave(file.path(figures_dir, "pca.png"), pca_plot, width = 7, height = 5, dpi = 300)
 ```
 
-### Volcano Plot
+## Volcano plot
 
-```{r, fig.pos="H", fig.width=7, fig.height=6, out.width="90%", fig.align="center", fig.cap="Volcano plot of differential gene expression showing log2 fold change versus statistical significance. Thresholds of |log2FC| > 1 and adjusted p-value < 0.05 are indicated by dashed lines. Red points represent upregulated genes, blue points represent downregulated genes, and grey points are not significant."}
+```{r volcano}
+top_genes <- res_df |> dplyr::filter(!is.na(padj)) |> dplyr::arrange(padj) |> dplyr::slice_head(n = 10) |> dplyr::pull(gene_id)
+label_data <- res_df |> dplyr::filter(gene_id %in% top_genes)
 
-top_genes <- res_df %>%
-  dplyr::filter(!is.na(padj)) %>%
-  dplyr::arrange(padj) %>%
-  dplyr::slice_head(n = 10) %>%
-  dplyr::pull(gene_id)
-
-label_data <- res_df %>%
-  dplyr::filter(gene_id %in% top_genes)
-
-ggplot(res_df, aes(x = log2FoldChange, y = -log10(pmax(padj, .Machine$double.xmin)), colour = deg_class)) +
- geom_point(alpha = 0.5, size = 1) +
-
-geom_text_repel(
-  data = label_data,
-  aes(label = symbol),
-  size = 3,
-  max.overlaps = Inf,
-  box.padding = 0.6,
-  point.padding = 0.4,
-  segment.color = "black",
-  segment.size = 0.3,
-  force = 2,
-  show.legend = FALSE
-) +
-
-  scale_colour_manual(values = c("Down" = "navy", "Up" = "firebrick3", "NS" = "gray")) +
+volcano_plot <- ggplot(res_df, aes(x = log2FoldChange, y = -log10(pmax(padj, .Machine$double.xmin)), colour = deg_class)) +
+  geom_point(alpha = 0.5, size = 1) +
+  geom_text_repel(data = label_data, aes(label = symbol), size = 3, max.overlaps = Inf, show.legend = FALSE) +
+  scale_colour_manual(values = c("Down" = "navy", "Up" = "firebrick3", "NS" = "gray", "Not tested" = "grey80")) +
   geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
-  labs(title = "Volcano Plot of Differential Expression") +
+  labs(title = "Volcano Plot of Differential Expression", x = "Shrunken log2 fold change", y = "-log10 adjusted p-value") +
   theme_minimal()
+print(volcano_plot)
+ggsave(file.path(figures_dir, "volcano.png"), volcano_plot, width = 7, height = 6, dpi = 300)
 ```
 
+## MA plot
 
-### MA Plot
-
-```{r fig.cap="MA plot showing the relationship between mean expression and log2 fold change, demonstrating that differential expression occurs across a wide range of expression levels.", fig.pos="H", fig.width=7, fig.height=6, out.width="90%", fig.align="center"}
-ggplot(res_df, aes(x = baseMean, y = log2FoldChange, colour = significant)) +
-geom_point(alpha = 0.3, size = 0.9)+
+```{r ma-plot}
+ma_plot <- ggplot(res_df, aes(x = baseMean, y = log2FoldChange, colour = significant)) +
+  geom_point(alpha = 0.3, size = 0.9) +
   scale_x_log10() +
   scale_colour_manual(values = c("NS" = "grey", "Significant" = "red")) +
-  geom_hline(yintercept = 0, colour = "black") +
+  geom_hline(yintercept = 0) +
   geom_hline(yintercept = c(-1, 1), linetype = "dashed") +
-  labs(
-    title = "MA Plot of Differential Expression",
-    x = "Mean of normalized counts",
-    y = "Log2 fold change",
-    colour = "Significance"
-  ) +
+  labs(title = "MA Plot of Differential Expression", x = "Mean normalized count", y = "Shrunken log2 fold change") +
   theme_minimal()
+print(ma_plot)
+ggsave(file.path(figures_dir, "ma_plot.png"), ma_plot, width = 7, height = 6, dpi = 300)
 ```
 
-### Heat-map
+## Heatmaps
 
-```{r fig.cap="Heatmap of the 20 genes with smallest available adjusted p-values, scaled by row. Selection and display use the same cohort.", fig.pos="H", fig.width=7, fig.height=6, out.width="90%", fig.align="center"}
-top_genes <- res_df %>%
-  dplyr::filter(!is.na(padj)) %>%
-  dplyr::arrange(padj) %>%
-  dplyr::slice_head(n = 20) %>%
-  dplyr::pull(gene_id)
-
-gene_symbols <- res_df$symbol[match(top_genes, res_df$gene_id)]
-
-heatmap_data <- assay(vsd)[top_genes, ]
+```{r heatmaps}
+top_genes_20 <- res_df |> dplyr::filter(!is.na(padj)) |> dplyr::arrange(padj) |> dplyr::slice_head(n = 20) |> dplyr::pull(gene_id)
+gene_symbols <- res_df$symbol[match(top_genes_20, res_df$gene_id)]
+heatmap_data <- assay(vsd)[top_genes_20, ]
 rownames(heatmap_data) <- gene_symbols
-
 annotation_col <- data.frame(condition = meta$condition)
 rownames(annotation_col) <- rownames(meta)
 
-pheatmap(
-  heatmap_data,
-  scale = "row",
-  color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
-  annotation_col = annotation_col,
-  cluster_rows = TRUE,
-  cluster_cols = TRUE,
-  show_colnames = FALSE,
-  fontsize_row = 8
-)
+png(file.path(figures_dir, "heatmap_top_genes.png"), width = 1800, height = 1500, res = 250)
+pheatmap(heatmap_data, scale = "row", color = colorRampPalette(c("navy", "white", "firebrick3"))(50), annotation_col = annotation_col, show_colnames = FALSE, fontsize_row = 8)
+dev.off()
+pheatmap(heatmap_data, scale = "row", color = colorRampPalette(c("navy", "white", "firebrick3"))(50), annotation_col = annotation_col, show_colnames = FALSE, fontsize_row = 8)
+
+sample_dists <- dist(t(assay(vsd)))
+png(file.path(figures_dir, "sample_distance_heatmap.png"), width = 1800, height = 1500, res = 250)
+pheatmap(as.matrix(sample_dists), annotation_col = annotation_col, color = colorRampPalette(c("navy", "white", "firebrick3"))(50), show_colnames = FALSE, show_rownames = FALSE)
+dev.off()
+pheatmap(as.matrix(sample_dists), annotation_col = annotation_col, color = colorRampPalette(c("navy", "white", "firebrick3"))(50), show_colnames = FALSE, show_rownames = FALSE)
 ```
 
-### Sample Distance Heat-map
+# GO gene-set enrichment analysis
 
-```{r fig.cap="Sample distances in variance-stabilized expression space, annotated by the original condition label.", fig.pos="H", fig.width=7, fig.height=6, out.width="90%", fig.align="center"}
-sampleDists <- dist(t(assay(vsd)))
-
-pheatmap(
-  as.matrix(sampleDists),
-  annotation_col = annotation_col,
-  color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
-  show_colnames = FALSE,
-  show_rownames = FALSE,
-)
-
-```
-
-### GSEA (GO)
-Functional enrichment analysis was conducted using the clusterProfiler package (Yu et al., 2012).
-
-Gene set enrichment analysis was performed to identify coordinated biological pathways associated with SARS-CoV-2 infection (Subramanian et al., 2005).
-
-
-```{r fig.cap="GO biological-process enrichment of the ranked expression contrast.", fig.pos="H", fig.width=7, fig.height=6, out.width="90%", fig.align="center"}
-# Preserve shrinkage-based ranking, but do not select the universe by adjusted p-value.
-rank_input <- res_df %>% dplyr::filter(is.finite(log2FoldChange))
-gene_df <- AnnotationDbi::select(
-  org.Hs.eg.db, keys = unique(rank_input$ensembl_id),
-  keytype = "ENSEMBL", columns = "ENTREZID"
-) %>% dplyr::distinct(ENSEMBL, ENTREZID)
-# Ambiguous one-to-many Ensembl mappings are excluded; all candidates remain in the audit.
-gene_df <- gene_df %>%
-  dplyr::group_by(ENSEMBL) %>%
-  dplyr::mutate(n_entrez = dplyr::n_distinct(ENTREZID, na.rm = TRUE)) %>%
-  dplyr::ungroup() %>%
-  dplyr::left_join(rank_input[, c("ensembl_id", "log2FoldChange")], by = c("ENSEMBL" = "ensembl_id")) %>%
-  dplyr::arrange(ENTREZID, dplyr::desc(abs(log2FoldChange)), ENSEMBL) %>%
-  dplyr::group_by(ENTREZID) %>%
-  dplyr::mutate(selected = !is.na(ENTREZID) & n_entrez == 1L &
-    cumsum(n_entrez == 1L) == 1L) %>%
+```{r gsea}
+rank_input <- res_df |> dplyr::filter(is.finite(log2FoldChange))
+gene_df <- AnnotationDbi::select(org.Hs.eg.db, keys = unique(rank_input$ensembl_id), keytype = "ENSEMBL", columns = "ENTREZID") |>
+  dplyr::distinct(ENSEMBL, ENTREZID) |>
+  dplyr::group_by(ENSEMBL) |>
+  dplyr::mutate(n_entrez = dplyr::n_distinct(ENTREZID, na.rm = TRUE)) |>
+  dplyr::ungroup() |>
+  dplyr::left_join(rank_input[, c("ensembl_id", "log2FoldChange")], by = c("ENSEMBL" = "ensembl_id")) |>
+  dplyr::arrange(ENTREZID, dplyr::desc(abs(log2FoldChange)), ENSEMBL) |>
+  dplyr::group_by(ENTREZID) |>
+  dplyr::mutate(selected = !is.na(ENTREZID) & n_entrez == 1L & cumsum(n_entrez == 1L) == 1L) |>
   dplyr::ungroup()
-write.csv(gene_df, file.path(data_dir, "gsea_mapping_audit.csv"), row.names = FALSE)
-ranked <- gene_df %>% dplyr::filter(selected) %>%
-  dplyr::arrange(dplyr::desc(log2FoldChange), ENTREZID)
+
+ranked <- gene_df |> dplyr::filter(selected) |> dplyr::arrange(dplyr::desc(log2FoldChange), ENTREZID)
 gene_list <- setNames(ranked$log2FoldChange, ranked$ENTREZID)
 stopifnot(!anyDuplicated(names(gene_list)), all(is.finite(gene_list)))
-write.csv(ranked, file.path(data_dir, "gsea_ranked_genes.csv"), row.names = FALSE)
 set.seed(42)
+ego_gsea <- gseGO(geneList = gene_list, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", seed = TRUE, BPPARAM = BiocParallel::SerialParam(), verbose = FALSE)
 
-ego_gsea <- gseGO(
-  geneList = gene_list,
-  OrgDb = org.Hs.eg.db,
-  keyType = "ENTREZID",
-  ont = "BP",
-  seed = TRUE,
-  BPPARAM = BiocParallel::SerialParam(),
-  verbose = FALSE
-)
-
-top_pathways <- head(ego_gsea@result$Description, 2)
-top_pathway_text <- paste(top_pathways, collapse = " and ")
-
-if (nrow(as.data.frame(ego_gsea)) > 0) dotplot(ego_gsea, showCategory = 8) else cat("No GO terms passed the enrichment threshold.")
+if (nrow(as.data.frame(ego_gsea)) > 0) {
+  gsea_dotplot <- dotplot(ego_gsea, showCategory = 8)
+  print(gsea_dotplot)
+  ggsave(file.path(figures_dir, "gsea_dotplot.png"), gsea_dotplot, width = 7, height = 6, dpi = 300)
+  png(file.path(figures_dir, "gsea_enrichment.png"), width = 1800, height = 1500, res = 250)
+  print(gseaplot2(ego_gsea, geneSetID = 1))
+  dev.off()
+  gseaplot2(ego_gsea, geneSetID = 1)
+}
 ```
 
-## Enrichment curve (top pathway)
+# Results
 
-```{r fig.cap="GSEA enrichment plot for the top enriched pathway, illustrating the distribution of pathway-associated genes across the ranked gene list and their contribution to the enrichment score.", fig.pos="H", fig.width=7, fig.height=6, out.width="90%", fig.align="center"}
-if (nrow(as.data.frame(ego_gsea)) > 0) gseaplot2(ego_gsea, geneSetID = 1)
-```
-
-## Results
-
-This dataset comprised `r sample_counts["Infected"]` libraries with the historical Infected label and `r sample_counts["Control"]` control samples, allowing direct comparison of transcriptional responses associated with SARS-CoV-2 infection.
-
-### Differentially Expressed Genes
-
-```{r deg-summary-data}
-sig <- res_df %>%
-  dplyr::filter(padj < 0.05, abs(log2FoldChange) > 1)
-
+```{r result-summary}
+sig <- res_df |> dplyr::filter(!is.na(padj), padj < 0.05, abs(log2FoldChange) > 1)
 n_sig <- nrow(sig)
 n_up <- sum(sig$log2FoldChange > 0)
 n_down <- sum(sig$log2FoldChange < 0)
-```
-
-### Differential Expression Summary
-
-```{r echo=FALSE}
-deg_summary <- data.frame(
-  Metric = c(
-    "Significant DEGs",
-    "Up-regulated genes",
-    "Down-regulated genes"
-  ),
-  Count = c(n_sig, n_up, n_down)
-)
-
-knitr::kable(
-  deg_summary,
-  caption = "Differential expression summary using the report threshold of adjusted p-value < 0.05 and |log2 fold change| > 1."
-)
-```
-
-### Top Differentially Expressed Genes
-
-```{r echo=FALSE}
-top <- sig %>%
-  dplyr::arrange(padj) %>%
-  dplyr::slice_head(n = 5)
-
+top <- sig |> dplyr::arrange(padj) |> dplyr::slice_head(n = 5)
 top_gene_text <- paste(top$symbol, collapse = ", ")
-
-top_display <- top %>%
-  dplyr::select(symbol, log2FoldChange, padj)
-
-colnames(top_display) <- c("Gene", "Log2 fold change", "Adjusted p-value")
-
-knitr::kable(
-  top_display,
-  digits = 3,
-  caption = "Top five differentially expressed genes ranked by adjusted p-value."
-)
 ```
 
-### Enriched Biological Pathways
+The model identifies `r n_sig` significant genes, including `r n_up` higher and `r n_down` lower in the historical `Infected` group. Top-ranked significant genes include `r top_gene_text`.
 
-```{r echo=FALSE}
-gsea_display <- head(ego_gsea@result[, c("Description", "NES", "p.adjust")])
-colnames(gsea_display) <- c("Pathway", "NES", "Adjusted p-value")
+```{r result-tables, echo=FALSE}
+knitr::kable(data.frame(Metric = c("Significant DEGs", "Higher in Infected", "Lower in Infected"), Count = c(n_sig, n_up, n_down)), caption = "Differential-expression summary.")
 
-knitr::kable(
-  gsea_display,
-  digits = 3,
-  caption = "Top enriched biological pathways identified by GSEA."
-)
+knitr::kable(top |> dplyr::select(symbol, log2FoldChange, padj), digits = 3, col.names = c("Gene", "Log2 fold change", "Adjusted p-value"), caption = "Top five differentially expressed genes.")
+
+if (nrow(as.data.frame(ego_gsea)) > 0) {
+  gsea_display <- head(ego_gsea@result[, c("Description", "NES", "p.adjust")])
+  colnames(gsea_display) <- c("Pathway", "NES", "Adjusted p-value")
+  knitr::kable(gsea_display, digits = 3, caption = "Top GO Biological Process terms identified by GSEA.")
+}
 ```
 
-## Interpretation and limitations
+# Interpretation and limitations
 
-The model calls `r n_sig` genes significant at adjusted p-value < 0.05 and absolute shrunken log2 fold change > 1, including `r n_up` higher and `r n_down` lower in the historical Infected group. Top-ranked significant symbols are `r top_gene_text`. These are expression associations under the specified model.
+These results are expression associations under the specified condition-only model. The cohort mixes acute infection and convalescence, and repeat-draw identifiers mean donor independence is unresolved. Severity, sex, timing, and other covariates are not modelled. Bulk expression also cannot distinguish altered cell proportions from within-cell expression changes.
 
-GO enrichment indicates ranked transcript associations with annotated biological processes. Enrichment is not a direct measurement of pathway activity. GSEA now uses all finite shrunken effects rather than dropping genes with missing adjusted p-values; ambiguous mappings and duplicate target IDs follow the documented audit policy, so enrichment results can differ from the historical snapshots.
-
-The cohort mixes acute infection and convalescence. Repeat-draw identifiers, disease severity, sex, timing, and other covariates require review before a revised inferential design is chosen. Library normalization does not correct those confounders. Bulk expression alone cannot distinguish altered cell proportions from within-cell expression changes.
-
-## Outputs and provenance
+# Export results
 
 ```{r exports}
-write.csv(res_df, file.path(data_dir, "all_DESeq2_results_with_symbols.csv"), row.names = FALSE)
-write.csv(sig, file.path(data_dir, "all_significant_DEGs.csv"), row.names = FALSE)
-write.csv(sig %>% dplyr::arrange(padj) %>% dplyr::slice_head(n = 100),
-          file.path(data_dir, "top_100_DEGs.csv"), row.names = FALSE)
-write.csv(as.data.frame(ego_gsea), file.path(data_dir, "gsea_results.csv"), row.names = FALSE)
-write.csv(meta, file.path(data_dir, "analysis_metadata.csv"), row.names = FALSE)
-saveRDS(dds, file.path(data_dir, "dds.rds"))
-saveRDS(vsd, file.path(data_dir, "vsd.rds"))
-writeLines(capture.output(sessionInfo()), file.path(data_dir, "session_info.txt"))
+write.csv(res_df, file.path(tables_dir, "all_DESeq2_results_with_symbols.csv"), row.names = FALSE)
+write.csv(sig, file.path(tables_dir, "all_significant_DEGs.csv"), row.names = FALSE)
+write.csv(sig |> dplyr::arrange(padj) |> dplyr::slice_head(n = 100), file.path(tables_dir, "top_100_DEGs.csv"), row.names = FALSE)
+write.csv(as.data.frame(ego_gsea), file.path(tables_dir, "gsea_results.csv"), row.names = FALSE)
+write.csv(meta, file.path(tables_dir, "analysis_metadata.csv"), row.names = FALSE)
+write.csv(gene_df, file.path(tables_dir, "gsea_mapping_audit.csv"), row.names = FALSE)
+write.csv(ranked, file.path(tables_dir, "gsea_ranked_genes.csv"), row.names = FALSE)
+writeLines(capture.output(sessionInfo()), file.path(tables_dir, "session_info.txt"))
 ```
 
-All outputs from this execution are written under `outputs/bulk/`. Historical exports under `reference/` are never read as computed results by this notebook.
+# References
 
-## References
-
-- [GSE152418 metadata](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418)
+- GSE152418: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE152418
 - Love MI, Huber W, Anders S. DESeq2. Genome Biology (2014), doi:10.1186/s13059-014-0550-8.
 - Yu G et al. clusterProfiler. OMICS (2012), doi:10.1089/omi.2011.0118.
 
