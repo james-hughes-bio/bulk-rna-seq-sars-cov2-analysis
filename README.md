@@ -1,6 +1,6 @@
 # Bulk RNA-seq analysis of SARS-CoV-2 PBMC samples
 
-A compact bulk RNA-seq analysis of the GSE152418 PBMC dataset, focused on differential expression and pathway-level interpretation.
+A compact bulk RNA-seq analysis of GSE152418 PBMC transcriptomes using DESeq2, apeglm and GO gene-set enrichment. This exploratory reproduction identifies 3,879 significant genes at adjusted p-value < 0.05 and |shrunken log2 fold change| > 1, comprising 3,688 genes higher and 191 lower in the historical `Infected` group.
 
 The analysis uses the original 34 libraries: 17 controls and 17 libraries carrying the historical `Infected` label. The infected group contains 16 acute COVID-19 libraries and one convalescent library, and repeat-draw identifiers are present. The condition-only DESeq2 model is therefore treated as an exploratory reproduction rather than a donor-independent disease-effect analysis.
 
